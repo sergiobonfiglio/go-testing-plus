@@ -14,6 +14,7 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {},
+  "publisher": "SergioBonfiglio",
   "repository": {
     "url": "https://github.com/sergiobonfiglio/go-testing-plus"
   },
