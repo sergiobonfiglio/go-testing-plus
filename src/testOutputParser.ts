@@ -28,15 +28,6 @@ export function processGoTestJsonLines(
 
     const outputByTest: Map<TestItem, string[]> = new Map();
 
-
-    //     let e: GoTestOutput;
-    //     try {
-    //         e = <GoTestOutput>JSON.parse(output);
-    //     } catch (e) {
-    //         console.warn(`failed to parse JSON: ${output}`);
-    //         return;
-    //     }
-
     splitLines(output).forEach(e => {
 
         if (!e.Test) {
@@ -115,7 +106,7 @@ function getTestByEscapedName(test: TestItem, targetEscapedName: string): TestIt
     }
 
     // not found, maybe it's a sub-test: search children
-    for (const [id, child] of test.children) {
+    for (const [_, child] of test.children) {
         if (getJsonName(child) === targetEscapedName) {
             return child;
         };
@@ -125,7 +116,8 @@ function getTestByEscapedName(test: TestItem, targetEscapedName: string): TestIt
 }
 
 function getJsonName(test: TestItem): string {
-    const fullTestName = buildGoTestName(test);
+    // do not strip duplicate suffixes here
+    const fullTestName = buildGoTestName(test, false);
     return fullTestName.replaceAll(' ', '_');
 }
 

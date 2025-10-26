@@ -6,11 +6,6 @@ import { processGoTestJsonLines, parseGoTestOutcomeLines, testRunOutcome } from 
 const { spawn } = require('child_process');
 
 
-type testRunResult = {
-    outcome: testRunOutcome,
-    output?: string
-}
-
 export class GoTestRunner {
 
     private readonly ctrl: vscode.TestController;
@@ -168,9 +163,7 @@ async function goTestRun(item: vscode.TestItem, testRun: vscode.TestRun): Promis
     const runArgs = ['test', '-json', '-run', pattern];
 
     testRun.appendOutput(`Running go test -json -run '${pattern}' [cwd: ${cwd}]\r\n`, undefined, item);
-    const execFileAsync = promisify(execFile);
 
-    // let combinedOutput: string;
     const child = spawn('go', runArgs, {
         cwd,
         env: { ...process.env, GO111MODULE: process.env.GO111MODULE || 'on' },
@@ -191,7 +184,6 @@ async function goTestRun(item: vscode.TestItem, testRun: vscode.TestRun): Promis
     await new Promise<void>((resolve) => {
         child.on('close', (code: number | null) => {
             resolve();
-
         });
     });
 }
@@ -200,7 +192,10 @@ function escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, r => `\\${r}`);
 }
 
-export function buildGoTestName(item: vscode.TestItem): string {
+export function buildGoTestName(
+    item: vscode.TestItem,
+    stripDuplicateSuffix: boolean = true
+): string {
     // Walk up until we reach the file (label ends with _test.go) collecting labels.
     const parts: string[] = [];
     let current: vscode.TestItem | undefined = item;
@@ -209,14 +204,15 @@ export function buildGoTestName(item: vscode.TestItem): string {
             break; // stop at file level
         }
 
+        let label = current.label;
         // for duplicated test names we append a count suffix (e.g. #1) to distinguish them
         // so we need to strip that suffix when building the full test name for execution
-        let label = current.label;
-        const nameMatch = label.match(/^(.*?)(#\d+)$/);
-        if (nameMatch) {
-            label = nameMatch[1];
+        if (stripDuplicateSuffix) {
+            const nameMatch = label.match(/^(.*?)(#\d+)$/);
+            if (nameMatch) {
+                label = nameMatch[1];
+            }
         }
-
         parts.push(label);
 
         current = current.parent as vscode.TestItem | undefined;

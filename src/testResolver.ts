@@ -227,7 +227,8 @@ async function processRunLine(
         // handle duplicate test names by appending a counter
         countByTestName[testData.name] = (countByTestName[testData.name] || 0) + 1;
         if (countByTestName[testData.name] > 1) {
-            testData.name = `${testData.name}#${countByTestName[testData.name] - 1}`;
+            const dupSuffix = String(countByTestName[testData.name] - 1).padStart(2, '0');
+            testData.name = `${testData.name}#${dupSuffix}`;
         }
 
         let testItemId = getTestItemId(testData.name, parentTest);
