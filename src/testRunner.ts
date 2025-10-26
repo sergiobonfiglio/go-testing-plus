@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { parseGoTestJsonLines, testRunOutcome } from './testOutputParser';
+import { processGoTestJsonLines, parseGoTestOutcomeLines, testRunOutcome } from './testOutputParser';
+const { spawn } = require('child_process');
 
 
 type testRunResult = {
@@ -16,7 +17,6 @@ export class GoTestRunner {
     constructor(ctrl: vscode.TestController) {
         this.ctrl = ctrl;
     }
-
 
     async runHandler(
         request: vscode.TestRunRequest,
@@ -35,10 +35,10 @@ export class GoTestRunner {
             testItems = testItems.filter(item => !excludeSet.has(item));
         }
 
-        //execute tests
-        for (const item of testItems) {
-            await this.runTestItem(testRun, item, token);
-        }
+        //execute tests    
+        await Promise.all(
+            testItems.map(item => this.runTestItem(testRun, item, token))
+        );
 
         testRun.end();
     }
@@ -47,41 +47,114 @@ export class GoTestRunner {
     private async runTestItem(
         testRun: vscode.TestRun,
         item: vscode.TestItem,
-        token: vscode.CancellationToken,
-        depth: number = 0
-    ): Promise<testRunResult> {
+        token: vscode.CancellationToken
+    ): Promise<void> {
         if (token.isCancellationRequested) {
-            return { outcome: 'skipped', output: 'Test run cancelled' };
+            return;
         }
         testRun.enqueued(item);
 
-        let itemOutcome: testRunResult;
-        try {
-            itemOutcome = await goTestRun(item, testRun);
-        } catch (err: any) {
-            itemOutcome = { outcome: 'errored', output: (err as Error).message };
+        // also enqueue children as they will be executed as part of the parent test
+        for (const [, child] of item.children) {
+            testRun.enqueued(child);
         }
 
-        // run sub-tests items if any
-        const childrenOutcome = await Promise.all(
-            Array.from(item.children).
-                map(child => this.runTestItem(testRun, child[1], token, depth + 1))
-        );
+        return goTestRun(item, testRun);
+    }
 
-        const failedChild = childrenOutcome.find(x => x.outcome === 'failed');
-        if (failedChild) {
-            testRun.failed(item, new vscode.TestMessage(`Test failed: nested test failed with output: ${failedChild.output}`));
-            return { outcome: 'failed', output: failedChild.output };
+
+
+    async debugHandler(
+        request: vscode.TestRunRequest,
+        token: vscode.CancellationToken): Promise<void> {
+
+        const testRun = this.ctrl.createTestRun(request);
+        for (const test of request.include ?? []) {
+            if (!test.uri) {
+                testRun.errored(test, new vscode.TestMessage('Cannot debug test: no URI associated with test item'));
+                continue;
+            }
+
+            // enqueue test and its children
+            testRun.enqueued(test);
+            for (const [, child] of test.children) {
+                testRun.enqueued(child);
+            }
+
+            const testName = buildGoTestName(test);
+            // testName would be empty if the item is the file itself, so use '.' to run all tests in the file.
+            const pattern = testName ? `^${escapeRegex(testName)}$` : '.';
+
+            const debugConfig = {
+                type: 'go',
+                name: 'Debug Single Test',
+                request: 'launch',
+                mode: 'test',
+                program: test.uri.fsPath,
+                args: ['-test.v', '-test.run', pattern]
+            };
+
+            // setup debug callbacks before starting the debug session
+            setupDebugListerners(
+                () => testRun.started(test),
+                (out: string) => parseGoTestOutcomeLines(test, testRun, out),
+                () => testRun.end()
+            );
+
+            // start debug session
+            const debugStarted = await vscode.debug.startDebugging(undefined, debugConfig);
+            if (!debugStarted) {
+                testRun.errored(test, new vscode.TestMessage('Debug session failed'));
+                return;
+            }
+
         }
-        return { outcome: 'passed' };
     }
 }
 
+function setupDebugListerners(
+    onStart: (_: vscode.DebugSession) => void,
+    onOutput: (out: string) => void,
+    onTerminate: (_: vscode.DebugSession) => void,
+) {
+    const debugAdapter = vscode.debug.registerDebugAdapterTrackerFactory('go', {
+        createDebugAdapterTracker(s) {
+            if (s.type !== 'go') {
+                return;
+            };
+            return {
+                onDidSendMessage(msg: { type: string; event: string; body: { category: string; output: string } }) {
+                    if (msg.type !== 'event' || msg.event !== 'output') {
+                        return;
+                    }
 
-async function goTestRun(item: vscode.TestItem, testRun: vscode.TestRun): Promise<testRunResult> {
+                    if (msg.body.category === 'stdout' || msg.body.category === 'stderr') {
+                        onOutput(msg.body.output);
+                    }
+                },
+            };
+        },
+    });
+
+    const debugStartListener = vscode.debug.onDidStartDebugSession(session => {
+        onStart(session);
+    });
+
+    const debugStopListener = vscode.debug.onDidTerminateDebugSession(((session: vscode.DebugSession) => {
+        debugStartListener.dispose();
+        debugStopListener.dispose();
+        debugAdapter.dispose();
+
+        onTerminate(session);
+    }));
+}
+
+
+async function goTestRun(item: vscode.TestItem, testRun: vscode.TestRun): Promise<void> {
     // Guard: we need a file URI to know where to run `go test` from
     if (!item.uri) {
-        return { outcome: 'skipped', output: 'No URI associated with test item' };
+        testRun.errored(item, new vscode.TestMessage('No URI associated with test item'));
+        return;
     }
 
     // Build the full test name (TestFunc[/SubTest[/NestedSubTest...]] )
@@ -97,26 +170,30 @@ async function goTestRun(item: vscode.TestItem, testRun: vscode.TestRun): Promis
     testRun.appendOutput(`Running go test -json -run '${pattern}' [cwd: ${cwd}]\r\n`, undefined, item);
     const execFileAsync = promisify(execFile);
 
-    let combinedOutput: string;
-    try {
-        const { stdout, stderr } = await execFileAsync('go', runArgs, {
-            cwd,
-            env: { ...process.env, GO111MODULE: process.env.GO111MODULE || 'on' },
-            maxBuffer: 10 * 1024 * 1024 // 10MB just in case
+    // let combinedOutput: string;
+    const child = spawn('go', runArgs, {
+        cwd,
+        env: { ...process.env, GO111MODULE: process.env.GO111MODULE || 'on' },
+    });
+
+    child.stdout.on('data', (data: Buffer) => {
+        const output = data.toString();
+        testRun.appendOutput(output, undefined, item); // Stream output to test run
+        processGoTestJsonLines(item, testRun, output);
+    });
+
+    child.stderr.on('data', (data: Buffer) => {
+        const errorOutput: string = data.toString();
+        testRun.appendOutput(errorOutput, undefined, item); // Stream error output to test run
+        processGoTestJsonLines(item, testRun, errorOutput);
+    });
+
+    await new Promise<void>((resolve) => {
+        child.on('close', (code: number | null) => {
+            resolve();
+
         });
-
-        combinedOutput = combineOutput(stdout, stderr);
-        // const outcome = parseGoTestJsonLines(item, testRun, combined);
-
-        // return { outcome, output: combined };
-    } catch (err: any) {
-        const stdout = err.stdout ?? '';
-        const stderr = err.stderr ?? '';
-        combinedOutput = combineOutput(stdout, stderr, err.message);
-    }
-
-    const outcome = parseGoTestJsonLines(item, testRun, combinedOutput);
-    return { outcome: 'failed', output: combinedOutput };
+    });
 }
 
 function escapeRegex(str: string): string {
@@ -157,44 +234,7 @@ function combineOutput(...chunks: (string | undefined)[]): string {
 }
 
 
-function parseGoTestOutcomeLine(output: string): testRunOutcome {
-    // Look for standard go test summary lines for the specific test.
-    // If we see "FAIL" before "PASS" treat as failed.
 
-    if (/\bno tests to run\b/i.test(output)) {
-        return 'skipped';
-    }
-
-    if (/\[build failed\]/i.test(output)) {
-        return 'errored';
-    }
-
-    if (/\bSKIP\b/.test(output)) {
-        return 'skipped';
-    }
-
-    if (/\bFAIL\b/.test(output) && !/\bPASS\b/.test(output)) {
-        return 'failed';
-    }
-    if (/\bFAIL\b/.test(output) && /\bPASS\b/.test(output)) {
-        // Mixed output: locate last summary line
-        const lines = output.split(/\r?\n/);
-        for (let i = lines.length - 1; i >= 0; i--) {
-            const l = lines[i];
-            if (/^FAIL\b/.test(l)) {
-                return 'failed';
-            }
-            if (/^ok\b|^PASS\b/.test(l)) {
-                return 'passed';
-            }
-        }
-        return 'failed';
-    }
-    if (/\bok\b|\bPASS\b/.test(output)) {
-        return 'passed';
-    }
-    return 'failed';
-}
 
 
 

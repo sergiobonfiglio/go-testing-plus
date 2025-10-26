@@ -1,7 +1,7 @@
 import path from "path";
 import { Location, Position, TestItem, TestMessage, TestRun, Uri } from "vscode";
 import { buildGoTestName } from "./testRunner";
-import { get } from "http";
+import { group } from "console";
 
 /**
  * go test -json output format.
@@ -18,17 +18,24 @@ export interface GoTestOutput {
 
 export type testRunOutcome = 'passed' | 'failed' | 'skipped' | 'errored';
 
-export function parseGoTestJsonLines(
+export function processGoTestJsonLines(
     test: TestItem,
     run: TestRun,
     output: string
-): testRunOutcome {
+) {
 
     let outcome: testRunOutcome | undefined = undefined;
 
-    // const collectedOutputs: string[] = [];
-
     const outputByTest: Map<TestItem, string[]> = new Map();
+
+
+    //     let e: GoTestOutput;
+    //     try {
+    //         e = <GoTestOutput>JSON.parse(output);
+    //     } catch (e) {
+    //         console.warn(`failed to parse JSON: ${output}`);
+    //         return;
+    //     }
 
     splitLines(output).forEach(e => {
 
@@ -37,7 +44,7 @@ export function parseGoTestJsonLines(
             return;
         }
 
-        const referencedTest = getTestByJsonName(test, e.Test);
+        const referencedTest = getTestByEscapedName(test, e.Test);
         if (!referencedTest) {
             //TODO: if the test is not found, it could be a sub-test
             // with a dynamic name that we're currently not able to resolve
@@ -90,21 +97,28 @@ export function parseGoTestJsonLines(
         }
     });
 
-    return outcome || 'errored';
 }
 
 
-function getTestByJsonName(test: TestItem, testJsonName: string): TestItem | undefined {
+function getTestByEscapedName(test: TestItem, targetEscapedName: string): TestItem | undefined {
 
+    // Traverse up to find the matching test item by comparing JSON names
     let current: TestItem | undefined = test;
-    let currentJsonName = getJsonName(current);
-    while (currentJsonName !== testJsonName && current.parent) {
+    let currentJsonName = getJsonName(test);
+    while (currentJsonName !== targetEscapedName && current.parent) {
         current = current.parent;
         currentJsonName = getJsonName(current);
     }
 
-    if (testJsonName === currentJsonName) {
+    if (targetEscapedName === currentJsonName) {
         return current;
+    }
+
+    // not found, maybe it's a sub-test: search children
+    for (const [id, child] of test.children) {
+        if (getJsonName(child) === targetEscapedName) {
+            return child;
+        };
     }
 
     return undefined;
@@ -118,6 +132,7 @@ function getJsonName(test: TestItem): string {
 function splitLines(output: string): GoTestOutput[] {
     return output.
         split(/\r?\n/).
+        filter(Boolean).
         map(line => {
             try {
                 return <GoTestOutput>JSON.parse(line);
@@ -160,73 +175,44 @@ function parseOutput(test: TestItem, output: string[]): TestMessage[] {
 }
 
 
+export function parseGoTestOutcomeLines(
+    test: TestItem,
+    run: TestRun,
+    output: string,
+) {
 
-// function consumeGoTestEvent(
-//     item: TestItem,
-//     run: TestRun,
-//     // tests: Record<string, TestItem>,
-//     // record: Map<string, string[]>,
-//     // complete: Set<TestItem>,
-//     // concat: boolean,
-//     e: GoTestOutput
-// ) {
-//     const test = e.Test && resolveTestName(tests, e.Test);
-//     if (!test) {
-//         return;
-//     }
+    for (const line of output.split(/\r?\n/)) {
 
-//     switch (e.Action) {
-//         case 'cont':
-//         case 'pause':
-//             // ignore
-//             break;
+        const runMatch = line.match(/=== RUN\s+(?<testName>.+)/);
+        if (runMatch?.groups?.testName) {
+            const testName = runMatch?.groups?.testName;
+            const referencedTest = getTestByEscapedName(test, testName);
+            if (!referencedTest) {
+                continue;
+            }
+            run.started(referencedTest);
+        }
 
-//         case 'run':
-//             run.started(test);
-//             break;
-
-//         case 'pass':
-//             // TODO(firelizzard18): add messages on pass, once that capability
-//             // is added.
-//             complete.add(test);
-//             run.passed(test, (e.Elapsed ?? 0) * 1000);
-//             break;
-
-//         case 'fail': {
-//             complete.add(test);
-//             const messages = parseOutput(test, record.get(test.id) || []);
-
-//             if (!concat) {
-//                 run.failed(test, messages, (e.Elapsed ?? 0) * 1000);
-//                 break;
-//             }
-
-//             const merged = new Map<string, TestMessage>();
-//             for (const { message, location } of messages) {
-//                 const loc = `${location?.uri}:${location?.range.start.line}`;
-//                 if (merged.has(loc)) {
-//                     merged.get(loc)!.message += '' + message;
-//                 } else {
-//                     merged.set(loc, { message, location });
-//                 }
-//             }
-
-//             run.failed(test, Array.from(merged.values()), (e.Elapsed ?? 0) * 1000);
-//             break;
-//         }
-
-//         case 'skip':
-//             complete.add(test);
-//             run.skipped(test);
-//             break;
-
-//         case 'output':
-//             if (/^(=== RUN|\s*--- (FAIL|PASS): )/.test(e.Output ?? '')) {
-//                 break;
-//             }
-
-//             if (record.has(test.id)) { record.get(test.id)!.push(e.Output ?? ''); }
-//             else { record.set(test.id, [e.Output ?? '']); }
-//             break;
-//     }
-// }
+        const resultMatch = line.match(/--- (?<outcome>PASS|FAIL|SKIP):\s+(?<testName>.+)\s+\((?<elapsed>[0-9\.]+)s\)/);
+        if (resultMatch?.groups?.testName && resultMatch?.groups?.outcome) {
+            const testName = resultMatch?.groups?.testName;
+            const referencedTest = getTestByEscapedName(test, testName);
+            if (!referencedTest) {
+                continue;
+            }
+            const elapsed = Number(resultMatch?.groups?.elapsed);
+            switch (resultMatch?.groups?.outcome) {
+                case 'PASS':
+                    run.passed(referencedTest, elapsed * 1000);
+                    break;
+                case 'FAIL':
+                    run.failed(referencedTest, [], elapsed * 1000);
+                    break;
+                case 'SKIP':
+                    run.skipped(referencedTest);
+                    break;
+            }
+        }
+    }
+    return;
+}

@@ -22,12 +22,12 @@ export async function activate(context: vscode.ExtensionContext) {
 		true,
 	);
 
-	// ctrl.createRunProfile(
-	// 	'Go+ (Debug)',
-	// 	vscode.TestRunProfileKind.Debug,
-	// 	async (request, token) => testRunner.runHandler(request, token),
-	// 	true,
-	// );
+	ctrl.createRunProfile(
+		'Go+ (Debug)',
+		vscode.TestRunProfileKind.Debug,
+		async (request, token) => testRunner.debugHandler(request, token),
+		true,
+	);
 
 	context.subscriptions.push(ctrl);
 

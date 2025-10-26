@@ -16,9 +16,17 @@ export function getWorkspaceTestPatterns() {
 }
 
 export async function findInitialFiles(controller: vscode.TestController, pattern: vscode.GlobPattern) {
-    for (const file of await vscode.workspace.findFiles(pattern)) {
-        addTestFile(controller, file);
-    }
+
+    const startFindFilesTime = Date.now();
+    const files = await vscode.workspace.findFiles(pattern);
+    const endFindFilesTime = Date.now();
+    console.log(`Time elapsed for findFiles: ${endFindFilesTime - startFindFilesTime} ms`);
+
+    await Promise.all(files.map(file => addTestFile(controller, file)));
+    const endAddTestFileTime = Date.now();
+    const addTestFileTime = endAddTestFileTime - endFindFilesTime;
+    const avg = files.length > 0 ? (addTestFileTime / files.length).toFixed(2) : addTestFileTime;
+    console.log(`Time elapsed for addTestFile (count ${files.length}): ${addTestFileTime}ms (avg: ${avg} ms/file)`);
 }
 
 export async function addTestFile(controller: vscode.TestController, uri: vscode.Uri) {
