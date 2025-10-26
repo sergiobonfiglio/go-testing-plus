@@ -10,46 +10,55 @@ export class GoTestController implements vscode.TestController {
     baseCtrl: vscode.TestController;
 
     constructor() {
-
-        vscode.tests;
         this.baseCtrl = vscode.tests.createTestController('goTestingPlusController', 'Go Testing+');
         this.id = this.baseCtrl.id;
         this.label = this.baseCtrl.label;
         this.items = this.baseCtrl.items;
+
+        // Assign handlers to the base controller
+        this.baseCtrl.refreshHandler = this.refreshHandler;
+        this.baseCtrl.resolveHandler = this.resolveHandler;
     }
 
 
-    refreshHandler: ((token: vscode.CancellationToken) => Thenable<void> | void) | undefined =
-        async (token: vscode.CancellationToken) => {
-            if (token.isCancellationRequested) {
-                return;
+    refreshHandler = async (token: vscode.CancellationToken): Promise<void> => {
+        if (token.isCancellationRequested) {
+            return;
+        }
+
+        this.items.replace([]);
+
+        const patterns = getWorkspaceTestPatterns();
+
+        for (const { pattern } of patterns) {
+            if (token.isCancellationRequested) { return; }
+
+            try {
+                await findInitialFiles(this, pattern);
+            } catch (err) {
+                console.error(`Error discovering ${pattern}:`, err);
             }
-
-            const promises = getWorkspaceTestPatterns()
-                .map(({ pattern }) => findInitialFiles(this, pattern));
-
-            await Promise.race([
-                Promise.all(promises),
-                new Promise<void>((resolve) => {
-                    token.onCancellationRequested(() => resolve());
-                })
-            ]);
-        };
+        }
+    };
 
     // from vscode.TestController, used to resolve test items. 
     resolveHandler?: ((item: vscode.TestItem | undefined) => Thenable<void> | void) | undefined =
         async (item?: vscode.TestItem) => {
 
             if (!item) {
-                await Promise.all(
-                    getWorkspaceTestPatterns()
-                        .map(({ pattern }) => findInitialFiles(this, pattern))
-                );
+                // Initial discovery - only if no items exist yet
+                if (this.items.size === 0) {
+                    await Promise.all(
+                        getWorkspaceTestPatterns()
+                            .map(({ pattern }) => findInitialFiles(this, pattern))
+                    );
+                }
                 return;
             }
 
-            if (item.uri) {
-                return addTestFile(this, item.uri!);
+            // Resolve children for a specific test item
+            if (item.uri && item.canResolveChildren) {
+                return addTestFile(this, item.uri);
             }
             return;
         };

@@ -1,7 +1,6 @@
 import path from "path";
 import { Location, Position, TestItem, TestMessage, TestRun, Uri } from "vscode";
 import { buildGoTestName } from "./testRunner";
-import { group } from "console";
 
 /**
  * go test -json output format.
@@ -23,8 +22,6 @@ export function processGoTestJsonLines(
     run: TestRun,
     output: string
 ) {
-
-    let outcome: testRunOutcome | undefined = undefined;
 
     const outputByTest: Map<TestItem, string[]> = new Map();
 
@@ -63,19 +60,16 @@ export function processGoTestJsonLines(
 
             case 'pass':
                 run.passed(referencedTest, (e.Elapsed ?? 0) * 1000);
-                outcome = 'passed';
                 break;
 
             case 'fail': {
                 const messages = parseOutput(referencedTest, outputByTest.get(referencedTest) || []);
                 run.failed(referencedTest, messages, (e.Elapsed ?? 0) * 1000);
-                outcome = 'failed';
                 break;
             }
 
             case 'skip':
                 run.skipped(referencedTest);
-                outcome = 'skipped';
                 break;
 
             case 'output':
@@ -149,7 +143,7 @@ function parseOutput(test: TestItem, output: string[]): TestMessage[] {
         // ^(?:.*\s+|\s*) - non-greedy match of any chars followed by a space or, a space.
         // (?<file>\S+\.go):(?<line>\d+):  - gofile:line: followed by a space.
         // (?<message>.\n)$ - all remaining message up to $.
-        const m = line.match(/^.*\s+(?<file>\S+\.go):(?<line>\d+): (?<message>.*\n)$/);
+        const m = line.match(/^.*\s+(?<file>\S+\.go):(?<line>\d+): (?<message>.*\n?)$/);
         if (m?.groups) {
             const file =
                 m.groups.file && path.isAbsolute(m.groups.file)

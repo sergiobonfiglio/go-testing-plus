@@ -1,8 +1,4 @@
-import { count } from 'console';
-import { get } from 'http';
 import * as vscode from 'vscode';
-
-
 
 export function getWorkspaceTestPatterns() {
     if (!vscode.workspace.workspaceFolders) {
@@ -29,10 +25,16 @@ export async function findInitialFiles(controller: vscode.TestController, patter
     console.log(`Time elapsed for addTestFile (count ${files.length}): ${addTestFileTime}ms (avg: ${avg} ms/file)`);
 }
 
-export async function addTestFile(controller: vscode.TestController, uri: vscode.Uri) {
-    const testFileItem = await processTestFile(controller, uri);
-    if (testFileItem) {
-        controller.items.add(testFileItem);
+export async function addTestFile(
+    controller: vscode.TestController,
+    uri: vscode.Uri
+): Promise<void> {
+    if (!controller.items.get(uri.toString())) {
+        const testFileItem = await processTestFile(controller, uri);
+        if (testFileItem) {
+            controller.items.add(testFileItem);
+        }
+        return;
     }
 }
 
@@ -57,17 +59,19 @@ export async function processTestFile(controller: vscode.TestController, uri: vs
                 sym.name,
                 uri);
             testFuncItem.range = sym.location.range;
-            testFileItem.children.add(testFuncItem);
             testFileItem.canResolveChildren = true;
+            testFileItem.children.add(testFuncItem);
 
             const line = await getLocationLine(sym.location);
             let testingTReferences = await getTestingTReferences(sym.location.uri, line);
 
-            for (const testingTRef of testingTReferences) {
-                // passing the parent test name as in the end we need to know the full test name to run it 
-                // e.g. ❯ go test -run "^TestXxx$/^my test case$/^my nested test case$"
-                processTestingTReference(controller, testingTRef, testFuncItem);
-            }
+            await Promise.all(
+                testingTReferences.map(testingTRef =>
+                    // passing the parent test name as in the end we need to know the full test name to run it 
+                    // e.g. ❯ go test -run "^TestXxx$/^my test case$/^my nested test case$"
+                    processTestingTReference(controller, testingTRef, testFuncItem)
+                )
+            );
         }
     }
 
@@ -240,14 +244,14 @@ async function processRunLine(
 
         // add to parent if present
         if (parentTest) {
-            parentTest.children.add(testItem);
             parentTest.canResolveChildren = true;
+            parentTest.children.add(testItem);
         }
 
         // Now process references to find nested tests
-        for (const tRef of tReferences || []) {
-            processTestingTReference(controller, tRef, testItem);
-        }
+        await Promise.all(
+            (tReferences || []).map(tRef => processTestingTReference(controller, tRef, testItem))
+        );
     }
 
     return testCaseItems;
@@ -260,7 +264,6 @@ function getTestItemId(testName: string, parentTest?: vscode.TestItem): string {
         return testName;
     }
 }
-
 
 
 async function expandSelection(
@@ -289,15 +292,15 @@ async function expandSelection(
     let selectionRange = result[0];
     if (opts.startChar) {
         let startChar = await getCharAt(uri, selectionRange.range.start);
-        while (selectionRange.parent && startChar !== '{') {
+        while (selectionRange.parent && startChar !== opts.startChar) {
             selectionRange = selectionRange.parent;
             startChar = await getCharAt(uri, selectionRange.range.start);
         }
 
-        if (startChar !== '{') {
+        if (startChar !== opts.startChar) {
             return;
         }
-    } else if (opts.num) {
+    } else if (opts.num !== undefined) {
         for (let i = 0; i < opts.num && selectionRange.parent !== undefined; i++) {
             selectionRange = selectionRange.parent;
         }
@@ -325,70 +328,40 @@ async function getStringAt(uri: vscode.Uri, range?: vscode.Range): Promise<strin
 
 
 
-async function calcConcatenatedName(
-    uri: vscode.Uri,
-    testNameValue: string,
-    range: vscode.Range
-): Promise<string> {
+// async function calcConcatenatedName(
+//     uri: vscode.Uri,
+//     testNameValue: string,
+//     range: vscode.Range
+// ): Promise<string> {
 
-    // split field value by +, then build the test name by going
-    // through each part and, if it's a string literal add the value
-    // if it's a variable, get references recursively until we find string literals
+//     // split field value by +, then build the test name by going
+//     // through each part and, if it's a string literal add the value
+//     // if it's a variable, get references recursively until we find string literals
 
-    const parts = testNameValue.split('+').map(part => part.trim());
+//     const parts = testNameValue.split('+').map(part => part.trim());
 
-    let finalName = '';
+//     let finalName = '';
 
-    let currIndex = 0;
-    for (const part of parts) {
-        if (/^["'`].*["'`]$/.test(part)) {
-            // string literal
-            finalName += part.slice(1, -1);
-            currIndex += part.length;
-        } else {
-            // variable - get references   
-            const varIndex = testNameValue.indexOf(part, range.start.character + currIndex);
-            if (varIndex === -1) {
-                console.error(`Variable ${part} not found in test name value: ${testNameValue}`);
-            }
+//     let currIndex = 0;
+//     for (const part of parts) {
+//         if (/^["'`].*["'`]$/.test(part)) {
+//             // string literal
+//             finalName += part.slice(1, -1);
+//             currIndex += part.length;
+//         } else {
+//             // variable - get references   
+//             const varIndex = testNameValue.indexOf(part, range.start.character + currIndex);
+//             if (varIndex === -1) {
+//                 console.error(`Variable ${part} not found in test name value: ${testNameValue}`);
+//             }
 
-            const references = await vscode.commands.executeCommand<vscode.Location[]>(
-                'vscode.executeReferenceProvider',
-                uri,
-                new vscode.Position(range.start.line, range.start.character + varIndex)
-            );
+//             const references = await vscode.commands.executeCommand<vscode.Location[]>(
+//                 'vscode.executeReferenceProvider',
+//                 uri,
+//                 new vscode.Position(range.start.line, range.start.character + varIndex)
+//             );
+//         }
+//     }
 
-
-
-
-        }
-    }
-
-    return finalName;
-}
-
-async function resolveVarReferenceToStringLiteral(uri: vscode.Uri, position: vscode.Position): Promise<string | undefined> {
-    const references = await vscode.commands.executeCommand<vscode.Location[]>(
-        'vscode.executeReferenceProvider',
-        uri,
-        position
-    );
-
-    for (const ref of references || []) {
-
-        // we're only interested in definitions like 
-        // name := "literal"
-        // const name = "literal"
-        // var name string = "literal"
-
-        const line = await getLocationLine(ref);
-
-        const stringLiteralMatch = line.text.match(/["'`]([^"'`]+)["'`]/);
-        if (stringLiteralMatch) {
-            return stringLiteralMatch[1];
-        }
-
-
-    }
-
-}
+//     return finalName;
+// }

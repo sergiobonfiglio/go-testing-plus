@@ -3,7 +3,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { processGoTestJsonLines, parseGoTestOutcomeLines, testRunOutcome } from './testOutputParser';
-const { spawn } = require('child_process');
+import { spawn } from 'child_process';
 
 
 export class GoTestRunner {
@@ -90,7 +90,7 @@ export class GoTestRunner {
             };
 
             // setup debug callbacks before starting the debug session
-            setupDebugListerners(
+            setupDebugListeners(
                 () => testRun.started(test),
                 (out: string) => parseGoTestOutcomeLines(test, testRun, out),
                 () => testRun.end()
@@ -107,7 +107,7 @@ export class GoTestRunner {
     }
 }
 
-function setupDebugListerners(
+function setupDebugListeners(
     onStart: (_: vscode.DebugSession) => void,
     onOutput: (out: string) => void,
     onTerminate: (_: vscode.DebugSession) => void,
@@ -189,7 +189,7 @@ async function goTestRun(item: vscode.TestItem, testRun: vscode.TestRun): Promis
 }
 
 function escapeRegex(str: string): string {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, r => `\\${r}`);
+    return str.replace(/[.*+?^${}()|[\]\\]/g, char => `\\${char}`);
 }
 
 export function buildGoTestName(
@@ -219,25 +219,3 @@ export function buildGoTestName(
     }
     return parts.reverse().join('/');
 }
-
-function combineOutput(...chunks: (string | undefined)[]): string {
-    return chunks
-        // split into lines so that we can normalize line endings to \r\n
-        .flatMap(l => l?.split('\n'))
-        .map(l => l?.replaceAll('\r', ''))
-        .filter(Boolean)
-        .join('\r\n').trim();
-}
-
-
-
-
-
-
-
-
-
-
-
-
-

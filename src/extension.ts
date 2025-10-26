@@ -2,9 +2,6 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { GoTestController } from './testController';
-import * as cp from 'child_process';
-import { promisify } from 'util';
-import { get } from 'http';
 import { addTestFile, findInitialFiles, getWorkspaceTestPatterns } from './testResolver';
 import { GoTestRunner } from './testRunner';
 
