@@ -131,7 +131,16 @@ export function buildGoTestName(item: vscode.TestItem): string {
         if (current.label.endsWith('_test.go')) {
             break; // stop at file level
         }
-        parts.push(current.label);
+
+        // for duplicated test names we append a count suffix (e.g. #1) to distinguish them
+        // so we need to strip that suffix when building the full test name for execution
+        let label = current.label;
+        const nameMatch = label.match(/^(.*?)(#\d+)$/);
+        if (nameMatch) {
+            label = nameMatch[1];
+        }
+
+        parts.push(label);
 
         current = current.parent as vscode.TestItem | undefined;
     }

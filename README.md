@@ -65,6 +65,8 @@ Contributions are welcome!
 ### 0.1.1
 
 - Added extension icon
+- Removed activation info message
+- Fixed discovery for test cases with the same name
 
 ### 0.1.0
 

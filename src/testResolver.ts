@@ -1,3 +1,4 @@
+import { count } from 'console';
 import { get } from 'http';
 import * as vscode from 'vscode';
 
@@ -206,6 +207,7 @@ async function processRunLine(
 
 
     const testCaseItems: vscode.TestItem[] = [];
+    const countByTestName: { [key: string]: number } = {}; // to handle duplicate test names
 
     for (const testData of testsData) {
         // only create test case if within parent test range (if parent test is defined)
@@ -214,7 +216,15 @@ async function processRunLine(
             continue;
         }
 
-        const testItemId = getTestItemId(testData.name, parentTest);
+        // handle duplicate test names by appending a counter
+        countByTestName[testData.name] = (countByTestName[testData.name] || 0) + 1;
+        if (countByTestName[testData.name] > 1) {
+            testData.name = `${testData.name}#${countByTestName[testData.name] - 1}`;
+        }
+
+        let testItemId = getTestItemId(testData.name, parentTest);
+
+
         const testItem = controller.createTestItem(testItemId, testData.name, uri);
         testItem.range = testData.range;
         testCaseItems.push(testItem);

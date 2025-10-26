@@ -8,25 +8,9 @@ import { get } from 'http';
 import { addTestFile, findInitialFiles, getWorkspaceTestPatterns } from './testResolver';
 import { GoTestRunner } from './testRunner';
 
-// const execFile = promisify(cp.execFile);
-// /**
-//  * Reproduces the API of the Go extension for type safety.
-//  */
-// interface ExtensionAPI {
-// 	isPreview: boolean;
-// 	settings: {
-// 		getExecutionCommand(toolName: string, resource?: vscode.Uri): CommandInvocation | undefined;
-// 	};
-// }
-// interface CommandInvocation {
-// 	binPath: string;
-// }
-// const goExt = vscode.extensions.getExtension<ExtensionAPI>('golang.go');
-// export type TestData = TestCase | TableTestCase;
-// export const testData = new WeakMap<vscode.TestItem, TestData>();
 
 export async function activate(context: vscode.ExtensionContext) {
-	vscode.window.showInformationMessage('Go Testing Plus Extension Activated');
+	console.log('Go Testing Plus Extension Activated');
 
 	const ctrl = new GoTestController();
 	const testRunner = new GoTestRunner(ctrl);
