@@ -62,6 +62,10 @@ Contributions are welcome!
 
 ## Release Notes
 
+### 0.1.1
+
+- Added extension icon
+
 ### 0.1.0
 
 - Initial release
