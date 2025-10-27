@@ -38,21 +38,18 @@ No user‑configurable settings yet.
 Currently no custom command palette commands are contributed. The extension creates a single Test Run Profile:
 
 - **Go+** – Standard run (non‑debug) for any selected scope.
-
-Debug support is planned.
+- **Go+ (Debug)** – Debug run for any selected scope.
 
 ## Known Limitations / Issues
 
 - Dynamic table test names built from variable concatenation are not resolved (child may be missing in explorer until runtime parsing enhancement is added).
 - Benchmark (`BenchmarkXxx`) and example tests are not yet discovered.
-- No debug run profile yet.
 
 ## Roadmap
 
 | Area                 | Planned Enhancements                                                                       |
 | -------------------- | ------------------------------------------------------------------------------------------ |
 | Test Name Resolution | Resolve dynamically concatenated names; runtime discovery & injection of missing sub‑tests |
-| Debugging            | Add Debug profile using Delve via `go test -run` selection                                 |
 | Benchmarks           | Discover & run `Benchmark*` functions                                                      |
 | Coverage             | Optional `-cover` integration with inline decoration                                       |
 
@@ -61,6 +58,10 @@ Debug support is planned.
 Contributions are welcome!
 
 ## Release Notes
+
+### 0.2.2
+
+- Updated roadmap with implemented features (debugging)
 
 ### 0.2.1
 
