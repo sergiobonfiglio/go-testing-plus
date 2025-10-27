@@ -62,6 +62,10 @@ Contributions are welcome!
 
 ## Release Notes
 
+### 0.2.1
+
+- Initial discovery of test files is now batched to avoid errors with large codebases
+
 ### 0.2.0
 
 - Added support for debugging tests
