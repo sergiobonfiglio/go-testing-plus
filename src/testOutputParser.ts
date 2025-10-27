@@ -99,14 +99,15 @@ function getTestByEscapedName(runCtx: TestRunContext, test: TestItem, targetEsca
         result = findChildTestByEscapedName(test, targetEscapedName);
     }
 
-
-    // if we still haven't found it, it could be a sub-test
-    // with a dynamic name that we're currently not able to resolve
-    // statically. Let's try to add it now.
-    result = resolveTestItemByEscapedName(
-        runCtx.controller,
-        test.uri!,
-        targetEscapedName);
+    if (!result) {
+        // if we still haven't found it, it could be a sub-test
+        // with a dynamic name that we're currently not able to resolve
+        // statically. Let's try to add it now.
+        result = resolveTestItemByEscapedName(
+            runCtx.controller,
+            test.uri!,
+            targetEscapedName);
+    }
 
     if (result) {
         runCtx.testItemByEscapedName.set(cacheKey, result);
