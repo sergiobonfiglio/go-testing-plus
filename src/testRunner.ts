@@ -171,13 +171,11 @@ async function goTestRun(item: vscode.TestItem, testRun: vscode.TestRun): Promis
 
     child.stdout.on('data', (data: Buffer) => {
         const output = data.toString();
-        testRun.appendOutput(output, undefined, item); // Stream output to test run
         processGoTestJsonLines(item, testRun, output);
     });
 
     child.stderr.on('data', (data: Buffer) => {
         const errorOutput: string = data.toString();
-        testRun.appendOutput(errorOutput, undefined, item); // Stream error output to test run
         processGoTestJsonLines(item, testRun, errorOutput);
     });
 

@@ -26,7 +26,6 @@ export function processGoTestJsonLines(
     const outputByTest: Map<TestItem, string[]> = new Map();
 
     splitLines(output).forEach(e => {
-
         if (!e.Test) {
             // ignore package-level events for now
             return;
@@ -38,6 +37,7 @@ export function processGoTestJsonLines(
             // with a dynamic name that we're currently not able to resolve
             // statically. We could use the output to add it to the controller
             // now for future runs.
+            console.warn(`could not find test item for test name: ${e.Test}`);
             return;
         }
 
@@ -73,11 +73,8 @@ export function processGoTestJsonLines(
                 break;
 
             case 'output':
-                if (/^(=== RUN|\s*--- (FAIL|PASS|SKIP): )/.test(e.Output ?? '')) {
-                    break;
-                }
                 if (e.Output) {
-                    run.appendOutput(e.Output + '\r\n', undefined, referencedTest);
+                    run.appendOutput(e.Output + "\r", undefined, referencedTest);
                 }
         }
     });
@@ -85,7 +82,14 @@ export function processGoTestJsonLines(
 }
 
 
+const testByEscapedNameCache = new Map<string, TestItem | undefined>();
+
 function getTestByEscapedName(test: TestItem, targetEscapedName: string): TestItem | undefined {
+    const cacheKey = `${test.id}:${targetEscapedName}`;
+
+    if (testByEscapedNameCache.has(cacheKey)) {
+        return testByEscapedNameCache.get(cacheKey);
+    }
 
     // Traverse up to find the matching test item by comparing JSON names
     let current: TestItem | undefined = test;
@@ -95,17 +99,29 @@ function getTestByEscapedName(test: TestItem, targetEscapedName: string): TestIt
         currentJsonName = getJsonName(current);
     }
 
+    let result: TestItem | undefined;
     if (targetEscapedName === currentJsonName) {
-        return current;
+        result = current;
+    } else {
+        result = findChildTestByEscapedName(test, targetEscapedName);
     }
 
-    // not found, maybe it's a sub-test: search children
+    testByEscapedNameCache.set(cacheKey, result);
+    return result;
+}
+
+function findChildTestByEscapedName(test: TestItem, targetEscapedName: string): TestItem | undefined {
     for (const [_, child] of test.children) {
-        if (getJsonName(child) === targetEscapedName) {
+        const childJsonName = getJsonName(child);
+        if (childJsonName === targetEscapedName) {
             return child;
-        };
+        }
+        if (child.children.size > 0) {
+            if (findChildTestByEscapedName(child, targetEscapedName)) {
+                return findChildTestByEscapedName(child, targetEscapedName);
+            }
+        }
     }
-
     return undefined;
 }
 
