@@ -18,7 +18,12 @@ export async function findInitialFiles(controller: vscode.TestController, patter
     const endFindFilesTime = Date.now();
     console.log(`Time elapsed for findFiles: ${endFindFilesTime - startFindFilesTime} ms`);
 
-    await Promise.all(files.map(file => addTestFile(controller, file)));
+    // Process files in batches to avoid overwhelming the language server
+    const batchSize = 10;
+    for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        await Promise.all(batch.map(file => addTestFile(controller, file)));
+    }
     const endAddTestFileTime = Date.now();
     const addTestFileTime = endAddTestFileTime - endFindFilesTime;
     const avg = files.length > 0 ? (addTestFileTime / files.length).toFixed(2) : addTestFileTime;
