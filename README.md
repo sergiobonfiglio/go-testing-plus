@@ -13,51 +13,83 @@ Go Testing+ augments the official Go extension's testing UI to give you fine‑g
 
 Then it lets you run exactly the scope you select (single case, whole function, file, or all) via a dedicated run profile: **Go+**.
 
+## Screenshots
+
+### Table tests discovery
+
+![Go Testing+ table tests](media/table_tests.png)
+
+### Test cases (nested)
+
+![Go Testing+ nested tests](media/nested_tests.png)
+
 ## Features
 
 - Automatic discovery & refresh of Go test files (`**/*_test.go`) via file system watchers
-- Run profile: **Go+** (standard run)
+- Run profile: **Go+** (standard run) and **Go+ (Debug)** (debug run)
 - Run single sub‑test without executing siblings (narrow `go test -run '^Full/Test/Path$'` pattern)
 - Support for nested table tests (static detection through symbol & reference analysis)
+- Partial support for dynamic sub‑test names (i.e. concatenated names): they are discovered after the first run
 - Parses `go test -json` output and streams relevant lines into the Test Explorer
 - Failure message parsing with file & line hyperlink locations
-
-> Note: Dynamic names produced at runtime (string concatenation / computed fields) are not yet fully resolved; they may appear only when executed (see Roadmap).
 
 ## Requirements
 
 - Go toolchain installed and `go` available on your PATH
 - Go modules enabled (`GO111MODULE=on` implicitly set if not present)
 
-## Extension Settings
-
-No user‑configurable settings yet.
-
 ## Commands & Run Profiles
 
-Currently no custom command palette commands are contributed. The extension creates a single Test Run Profile:
+The extension creates the following Test Run Profile:
 
 - **Go+** – Standard run (non‑debug) for any selected scope.
 - **Go+ (Debug)** – Debug run for any selected scope.
 
-## Known Limitations / Issues
+## Known Limitations
 
-- Dynamic table test names built from variable concatenation are not resolved (child may be missing in explorer until runtime parsing enhancement is added).
-- Benchmark (`BenchmarkXxx`) and example tests are not yet discovered.
+- Dynamic table test names built from variable concatenation and test cases with positional initialization (i.e. without field names) are only resolved after the first run.
+
+```go
+ tests := []struct {
+		name string
+		fail bool
+		skip bool
+	}{
+	    {"test A", false, false},
+        {"test " + "B", false, false},
+        ...
+```
+
+- Indirect usages of the testing.T variable inside the main test function would not be statically discovered. This is because the extension relies on static analysis of references to the parameter of the test function. For example:
+
+```go
+ func TestXxx(t *testing.T) {
+     tt := t
+     tt.Run("case1", func(t *testing.T) { ... })
+ }
+```
+
+- Benchmark (`BenchmarkXxx`) and example tests are not discovered.
 
 ## Roadmap
 
-| Area                 | Planned Enhancements                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------------ |
-| Test Name Resolution | Resolve dynamically concatenated names; runtime discovery & injection of missing sub‑tests |
-| Benchmarks           | Discover & run `Benchmark*` functions                                                      |
-| Coverage             | Optional `-cover` integration with inline decoration                                       |
+| Area       | Planned Enhancements                                 |
+| ---------- | ---------------------------------------------------- |
+| Benchmarks | Discover & run `Benchmark*` functions                |
+| Coverage   | Optional `-cover` integration with inline decoration |
 
 ## Contributing
 
 Contributions are welcome!
 
 ## Release Notes
+
+### 0.3.0
+
+- Resolve test with dynamic names after first run
+- Improved test output processing 
+- Fix refresh of tests on file changes
+- Readme updated
 
 ### 0.2.2
 
