@@ -62,6 +62,12 @@ Contributions are welcome!
 
 ## Release Notes
 
+### 0.2.0
+
+- Added support for debugging tests
+- Fixed handling of test output parsing
+- Fixed test file refresh
+
 ### 0.1.1
 
 - Added extension icon
