@@ -44,6 +44,21 @@ export async function addTestFile(
     }
 }
 
+export async function replaceTestFile(
+    controller: vscode.TestController,
+    uri: vscode.Uri
+): Promise<void> {
+
+    controller.items.delete(uri.toString());
+    const testFileItem = await processTestFile(controller, uri);
+    if (testFileItem) {
+        controller.items.add(testFileItem);
+    }
+    return;
+
+}
+
+
 function createTestFromUri(controller: vscode.TestController, uri: vscode.Uri): vscode.TestItem {
     return controller.createTestItem(uri.toString(), uri.path.split('/').pop()!, uri);
 }

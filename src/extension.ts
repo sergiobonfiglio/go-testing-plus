@@ -2,7 +2,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { GoTestController } from './testController';
-import { addTestFile, findInitialFiles, getWorkspaceTestPatterns } from './testResolver';
+import { addTestFile, findInitialFiles, getWorkspaceTestPatterns, replaceTestFile } from './testResolver';
 import { GoTestRunner } from './testRunner';
 
 
@@ -36,7 +36,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				addTestFile(ctrl, uri);
 			});
 			watcher.onDidChange(async uri => {
-				addTestFile(ctrl, uri);
+				replaceTestFile(ctrl, uri);
 			});
 			watcher.onDidDelete(uri =>
 				ctrl.items.delete(uri.toString())
