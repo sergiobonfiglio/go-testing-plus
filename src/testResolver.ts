@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { buildGoTestName } from './testRunner';
 
 export function getWorkspaceTestPatterns() {
     if (!vscode.workspace.workspaceFolders) {
@@ -43,6 +44,10 @@ export async function addTestFile(
     }
 }
 
+function createTestFromUri(controller: vscode.TestController, uri: vscode.Uri): vscode.TestItem {
+    return controller.createTestItem(uri.toString(), uri.path.split('/').pop()!, uri);
+}
+
 export async function processTestFile(controller: vscode.TestController, uri: vscode.Uri): Promise<vscode.TestItem | undefined> {
 
     if (!uri.path.endsWith('_test.go')) {
@@ -50,7 +55,7 @@ export async function processTestFile(controller: vscode.TestController, uri: vs
     }
 
     // Create the test item for the file
-    const testFileItem = controller.createTestItem(uri.toString(), uri.path.split('/').pop()!, uri);
+    const testFileItem = createTestFromUri(controller, uri);
 
     const docSymbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>('vscode.executeDocumentSymbolProvider', uri);
 
@@ -268,6 +273,54 @@ function getTestItemId(testName: string, parentTest?: vscode.TestItem): string {
     } else {
         return testName;
     }
+}
+
+
+export function resolveTestItemByEscapedName(
+    controller: vscode.TestController,
+    rootFileTestId: vscode.Uri,
+    escapedTestName: string,
+): vscode.TestItem | undefined {
+
+    const nameParts = escapedTestName.split('/');
+
+    const rootFileTestItem = controller.items.get(rootFileTestId.toString());
+    if (!rootFileTestItem) {
+        // this should never happen, let's abort
+        console.error(`Could not find root test item for uri: ${rootFileTestId}`);
+        return;
+    }
+
+    let currentParent: vscode.TestItem = rootFileTestItem;
+    let lastCreatedTestItem: vscode.TestItem | undefined;
+    for (const part of nameParts) {
+        // unescaping doesn't work for tests that had _ in their original names
+        // maybe this could be solved by creating test ids already escaped?
+        const unescapedPart = part.replaceAll('_', ' ');
+
+        const currPartTestId = currentParent === rootFileTestItem ?
+            `${currentParent.id}::${unescapedPart}` : getTestItemId(unescapedPart, currentParent);
+
+        const found = currentParent.children.get(currPartTestId);
+        if (found) {
+            currentParent = found;
+        } else {
+            // this is a new test, let's create it
+            const newTestItem = controller.createTestItem(
+                currPartTestId,
+                unescapedPart,
+                rootFileTestItem.uri
+            );
+            lastCreatedTestItem = newTestItem;
+            currentParent.canResolveChildren = true;
+            currentParent.children.add(newTestItem);
+            currentParent = newTestItem;
+            // unfortunately we don't have any idea of where this test is defined in the file,
+            // so we can't set a range for it :(. But at least it will show up in the test explorer.
+        }
+    }
+
+    return lastCreatedTestItem;
 }
 
 

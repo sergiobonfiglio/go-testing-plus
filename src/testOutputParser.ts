@@ -1,6 +1,7 @@
 import path from "path";
 import { Location, Position, TestItem, TestMessage, TestRun, Uri } from "vscode";
-import { buildGoTestName } from "./testRunner";
+import { buildGoTestName, TestRunContext } from "./testRunner";
+import { resolveTestItemByEscapedName } from "./testResolver";
 
 /**
  * go test -json output format.
@@ -15,13 +16,12 @@ export interface GoTestOutput {
     Elapsed?: number; // seconds
 }
 
-export type testRunOutcome = 'passed' | 'failed' | 'skipped' | 'errored';
-
 export function processGoTestJsonLines(
     test: TestItem,
-    run: TestRun,
+    runCtx: TestRunContext,
     output: string
 ) {
+    const { testRun: run } = runCtx;
 
     const outputByTest: Map<TestItem, string[]> = new Map();
 
@@ -31,13 +31,8 @@ export function processGoTestJsonLines(
             return;
         }
 
-        const referencedTest = getTestByEscapedName(test, e.Test);
+        let referencedTest = getTestByEscapedName(runCtx, test, e.Test);
         if (!referencedTest) {
-            //TODO: if the test is not found, it could be a sub-test
-            // with a dynamic name that we're currently not able to resolve
-            // statically. We could use the output to add it to the controller
-            // now for future runs.
-            console.warn(`could not find test item for test name: ${e.Test}`);
             return;
         }
 
@@ -82,13 +77,11 @@ export function processGoTestJsonLines(
 }
 
 
-const testByEscapedNameCache = new Map<string, TestItem | undefined>();
-
-function getTestByEscapedName(test: TestItem, targetEscapedName: string): TestItem | undefined {
+function getTestByEscapedName(runCtx: TestRunContext, test: TestItem, targetEscapedName: string): TestItem | undefined {
     const cacheKey = `${test.id}:${targetEscapedName}`;
 
-    if (testByEscapedNameCache.has(cacheKey)) {
-        return testByEscapedNameCache.get(cacheKey);
+    if (runCtx.testItemByEscapedName.has(cacheKey)) {
+        return runCtx.testItemByEscapedName.get(cacheKey);
     }
 
     // Traverse up to find the matching test item by comparing JSON names
@@ -106,7 +99,18 @@ function getTestByEscapedName(test: TestItem, targetEscapedName: string): TestIt
         result = findChildTestByEscapedName(test, targetEscapedName);
     }
 
-    testByEscapedNameCache.set(cacheKey, result);
+
+    // if we still haven't found it, it could be a sub-test
+    // with a dynamic name that we're currently not able to resolve
+    // statically. Let's try to add it now.
+    result = resolveTestItemByEscapedName(
+        runCtx.controller,
+        test.uri!,
+        targetEscapedName);
+
+    if (result) {
+        runCtx.testItemByEscapedName.set(cacheKey, result);
+    }
     return result;
 }
 
@@ -145,8 +149,6 @@ function splitLines(output: string): GoTestOutput[] {
         filter(line => line !== undefined);
 }
 
-
-
 function parseOutput(test: TestItem, output: string[]): TestMessage[] {
     const messages: TestMessage[] = [];
 
@@ -179,16 +181,18 @@ function parseOutput(test: TestItem, output: string[]): TestMessage[] {
 
 export function parseGoTestOutcomeLines(
     test: TestItem,
-    run: TestRun,
+    runCtx: TestRunContext,
     output: string,
 ) {
+
+    const { testRun: run } = runCtx;
 
     for (const line of output.split(/\r?\n/)) {
 
         const runMatch = line.match(/=== RUN\s+(?<testName>.+)/);
         if (runMatch?.groups?.testName) {
             const testName = runMatch?.groups?.testName;
-            const referencedTest = getTestByEscapedName(test, testName);
+            const referencedTest = getTestByEscapedName(runCtx, test, testName);
             if (!referencedTest) {
                 continue;
             }
@@ -198,7 +202,7 @@ export function parseGoTestOutcomeLines(
         const resultMatch = line.match(/--- (?<outcome>PASS|FAIL|SKIP):\s+(?<testName>.+)\s+\((?<elapsed>[0-9\.]+)s\)/);
         if (resultMatch?.groups?.testName && resultMatch?.groups?.outcome) {
             const testName = resultMatch?.groups?.testName;
-            const referencedTest = getTestByEscapedName(test, testName);
+            const referencedTest = getTestByEscapedName(runCtx, test, testName);
             if (!referencedTest) {
                 continue;
             }

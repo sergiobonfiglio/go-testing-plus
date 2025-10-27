@@ -1,9 +1,7 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import { processGoTestJsonLines, parseGoTestOutcomeLines, testRunOutcome } from './testOutputParser';
 import { spawn } from 'child_process';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import { parseGoTestOutcomeLines, processGoTestJsonLines } from './testOutputParser';
 
 
 export class GoTestRunner {
@@ -30,9 +28,11 @@ export class GoTestRunner {
             testItems = testItems.filter(item => !excludeSet.has(item));
         }
 
+        const runCtx = new TestRunContext(this.ctrl, testRun);
+
         //execute tests    
         await Promise.all(
-            testItems.map(item => this.runTestItem(testRun, item, token))
+            testItems.map(item => this.runTestItem(runCtx, item, token))
         );
 
         testRun.end();
@@ -40,13 +40,14 @@ export class GoTestRunner {
 
 
     private async runTestItem(
-        testRun: vscode.TestRun,
+        runCtx: TestRunContext,
         item: vscode.TestItem,
         token: vscode.CancellationToken
     ): Promise<void> {
         if (token.isCancellationRequested) {
             return;
         }
+        const { testRun } = runCtx;
         testRun.enqueued(item);
 
         // also enqueue children as they will be executed as part of the parent test
@@ -54,7 +55,7 @@ export class GoTestRunner {
             testRun.enqueued(child);
         }
 
-        return goTestRun(item, testRun);
+        return goTestRun(item, runCtx);
     }
 
 
@@ -89,10 +90,11 @@ export class GoTestRunner {
                 args: ['-test.v', '-test.run', pattern]
             };
 
+            const runCtx = new TestRunContext(this.ctrl, testRun);
             // setup debug callbacks before starting the debug session
             setupDebugListeners(
                 () => testRun.started(test),
-                (out: string) => parseGoTestOutcomeLines(test, testRun, out),
+                (out: string) => parseGoTestOutcomeLines(test, runCtx, out),
                 () => testRun.end()
             );
 
@@ -106,6 +108,21 @@ export class GoTestRunner {
         }
     }
 }
+
+
+export class TestRunContext {
+    testRun: vscode.TestRun;
+    testItemByEscapedName: Map<string, vscode.TestItem>;
+    controller: vscode.TestController;
+
+    constructor(controller: vscode.TestController, testRun: vscode.TestRun) {
+        this.controller = controller;
+        this.testRun = testRun;
+        this.testItemByEscapedName = new Map<string, vscode.TestItem>();
+    }
+};
+
+
 
 function setupDebugListeners(
     onStart: (_: vscode.DebugSession) => void,
@@ -145,7 +162,8 @@ function setupDebugListeners(
 }
 
 
-async function goTestRun(item: vscode.TestItem, testRun: vscode.TestRun): Promise<void> {
+async function goTestRun(item: vscode.TestItem, runCtx: TestRunContext): Promise<void> {
+    const { testRun } = runCtx;
     // Guard: we need a file URI to know where to run `go test` from
     if (!item.uri) {
         testRun.errored(item, new vscode.TestMessage('No URI associated with test item'));
@@ -171,12 +189,12 @@ async function goTestRun(item: vscode.TestItem, testRun: vscode.TestRun): Promis
 
     child.stdout.on('data', (data: Buffer) => {
         const output = data.toString();
-        processGoTestJsonLines(item, testRun, output);
+        processGoTestJsonLines(item, runCtx, output);
     });
 
     child.stderr.on('data', (data: Buffer) => {
         const errorOutput: string = data.toString();
-        processGoTestJsonLines(item, testRun, errorOutput);
+        processGoTestJsonLines(item, runCtx, errorOutput);
     });
 
     await new Promise<void>((resolve) => {
