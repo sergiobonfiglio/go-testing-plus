@@ -17,11 +17,11 @@ Then it lets you run exactly the scope you select (single case, whole function, 
 
 ### Table tests discovery
 
-![Go Testing+ table tests](media/table_tests.png)
+![Go Testing+ table tests](./media/table_tests.png)
 
 ### Test cases (nested)
 
-![Go Testing+ nested tests](media/nested_tests.png)
+![Go Testing+ nested tests](./media/nested_tests.png)
 
 ## Features
 
