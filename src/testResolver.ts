@@ -83,7 +83,6 @@ export async function processTestFile(controller: vscode.TestController, uri: vs
                 `${uri.toString()}::${sym.name}`,
                 sym.name,
                 uri);
-            testFuncItem.range = sym.location.range;
             testFileItem.canResolveChildren = true;
             testFileItem.children.add(testFuncItem);
 
@@ -94,7 +93,7 @@ export async function processTestFile(controller: vscode.TestController, uri: vs
                 testingTReferences.map(testingTRef =>
                     // passing the parent test name as in the end we need to know the full test name to run it 
                     // e.g. ❯ go test -run "^TestXxx$/^my test case$/^my nested test case$"
-                    processTestingTReference(controller, testingTRef, testFuncItem)
+                    processTestingTReference(controller, testingTRef, testFuncItem, sym.location.range)
                 )
             );
         }
@@ -112,11 +111,13 @@ async function getLocationLine(location: vscode.Location): Promise<vscode.TextLi
 async function processTestingTReference(
     controller: vscode.TestController,
     testingTRef: vscode.Location,
-    parentTest?: vscode.TestItem): Promise<vscode.TestItem[] | undefined> {
+    parentTest?: vscode.TestItem,
+    parentRange?: vscode.Range
+): Promise<vscode.TestItem[] | undefined> {
 
     const line = await getLocationLine(testingTRef);
 
-    const testCaseItem = processRunLine(controller, testingTRef.uri, line, parentTest);
+    const testCaseItem = processRunLine(controller, testingTRef.uri, line, parentTest, parentRange);
     return testCaseItem;
 }
 
@@ -152,7 +153,9 @@ async function processRunLine(
     controller: vscode.TestController,
     uri: vscode.Uri,
     line: vscode.TextLine,
-    parentTest?: vscode.TestItem): Promise<vscode.TestItem[] | undefined> {
+    parentTest?: vscode.TestItem,
+    parentRange?: vscode.Range
+): Promise<vscode.TestItem[] | undefined> {
 
     // Extract the test name (first argument to .Run())
     const runMatch = line.text.match(/\.Run\(\s*([^,]+),/);
@@ -249,7 +252,7 @@ async function processRunLine(
     for (const testData of testsData) {
         // only create test case if within parent test range (if parent test is defined)
         // this handles table tests with nested table tests
-        if (parentTest && !parentTest.range?.contains(testData.range.start)) {
+        if (parentTest && !parentRange?.contains(testData.range.start)) {
             continue;
         }
 
@@ -275,7 +278,7 @@ async function processRunLine(
 
         // Now process references to find nested tests
         await Promise.all(
-            (tReferences || []).map(tRef => processTestingTReference(controller, tRef, testItem))
+            (tReferences || []).map(tRef => processTestingTReference(controller, tRef, testItem, testData.range))
         );
     }
 
