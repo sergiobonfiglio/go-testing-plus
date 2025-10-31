@@ -2,7 +2,7 @@
   "name": "go-testing-plus",
   "displayName": "Go Testing+",
   "description": "Adds support to running single test cases of normal test files and table tests",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "engines": {
     "vscode": "^1.105.0"
   },
