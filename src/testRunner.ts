@@ -173,14 +173,21 @@ async function goTestRun(item: vscode.TestItem, runCtx: TestRunContext): Promise
     // Build the full test name (TestFunc[/SubTest[/NestedSubTest...]] )
     const testName = buildGoTestName(item);
 
-    const cwd = path.dirname(item.uri.fsPath);
+    const parsedPath = path.parse(item.uri.fsPath);
 
-    // testName would be empty if the item is the file itself, so use '.' to run all tests in the file.
-    const pattern = testName ? `^${escapeRegex(testName)}$` : '.';
+    const cwd = parsedPath.dir;
+    const runArgs = ['test', '-timeout', '30s', '-json', '-run'];
+    
+    if (testName) {
+        runArgs.push(`^${escapeRegex(testName)}$`);
+    } else {
+        // testName would be empty if the item is the file itself, so use '.' to run all tests in the file.
+        runArgs.push('.', `${parsedPath.name}${parsedPath.ext}`);
+    }
 
-    const runArgs = ['test', '-json', '-run', pattern];
+    const fullCmd = `go ${runArgs.join(' ')}`;
 
-    testRun.appendOutput(`Running go test -json -run '${pattern}' [cwd: ${cwd}]\r\n`, undefined, item);
+    testRun.appendOutput(`Running '${fullCmd}' [cwd: ${cwd}]\r\n`, undefined, item);
 
     const child = spawn('go', runArgs, {
         cwd,
