@@ -1,7 +1,8 @@
 import path from "path";
-import { Location, Position, TestItem, TestMessage, TestRun, Uri } from "vscode";
-import { buildGoTestName, TestRunContext } from "./testRunner";
+import { Location, Position, TestItem, TestMessage, Uri } from "vscode";
 import { resolveTestItemByEscapedName } from "./testResolver";
+import { buildGoTestName, TestRunContext } from "./testRunner";
+import { styles } from "./styles";
 
 /**
  * go test -json output format.
@@ -69,7 +70,15 @@ export function processGoTestJsonLines(
 
             case 'output':
                 if (e.Output) {
-                    run.appendOutput(e.Output + "\r", undefined, referencedTest);
+                    let color = { open: '', close: '' };
+                    if (/--- FAIL/.test(e.Output)) {
+                        color = styles.red;
+                    } else if (/--- SKIP/.test(e.Output)) {
+                        color = styles.gray;
+                    } else if (/--- PASS/.test(e.Output)) {
+                        color = styles.green;
+                    }
+                    run.appendOutput(`${color.open}${e.Output}${color.close}\r`, undefined, referencedTest);
                 }
         }
     });
