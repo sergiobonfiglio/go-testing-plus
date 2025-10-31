@@ -1,6 +1,9 @@
 
 # Release Notes
 
+### 0.4.0
+
+- Colored test output in the Test Output panel
 
 ### 0.3.2
 
