@@ -1,6 +1,10 @@
 
 # Release Notes
 
+### 0.4.1
+
+- Added extension activation after Go extension activation to ensure language server availability
+
 ### 0.4.0
 
 - Colored test output in the Test Output panel
