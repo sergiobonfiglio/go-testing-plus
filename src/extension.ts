@@ -7,6 +7,11 @@ import { GoTestRunner } from './testRunner';
 
 
 export async function activate(context: vscode.ExtensionContext) {
+	// Wait for the Go extension to activate as we depend on the language server
+	const goExt = vscode.extensions.getExtension('golang.go');
+	if (goExt && !goExt.isActive) {
+		await goExt.activate();
+	}
 	console.log('Go Testing Plus Extension Activated');
 
 	const ctrl = new GoTestController();

@@ -19,6 +19,9 @@
   "repository": {
     "url": "https://github.com/sergiobonfiglio/go-testing-plus"
   },
+  "extensionDependencies": [
+    "golang.go"
+  ],
   "scripts": {
     "vscode:prepublish": "npm run package",
     "compile": "npm run check-types && npm run lint && node esbuild.js",
